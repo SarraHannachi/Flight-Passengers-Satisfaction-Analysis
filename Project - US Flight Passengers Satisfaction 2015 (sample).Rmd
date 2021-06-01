@@ -1,0 +1,655 @@
+---
+title: "US Flight Passenger Satisfaction 2015"
+author: "Sarra Hannachi"
+date: "23/02/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r pressure, echo=FALSE, fig.cap=" ", out.width = '70%'}
+knitr::include_graphics("American_Airlines.png")
+```
+
+# Section 1: Data Description 
+>
+
+## Importing Data:  
+
+Let us import and adjust our data (types of variables, Likert scale regulation,etc.):
+
+```{r}
+US<-read.csv('US airline.csv')
+```
+```{r include=FALSE}
+zeros <- US$X[US$Inflight.wifi.service==0 | US$Departure.Arrival.time.convenient ==0 | US$Ease.of.Online.booking ==0 | US$Gate.location ==0 | US$Food.and.drink ==0 |
+US$Online.boarding ==0 | US$Seat.comfort ==0 | US$Inflight.entertainment ==0 |
+US$On.board.service ==0 | US$Leg.room.service ==0 | US$Baggage.handling ==0 |
+US$Checkin.service ==0 | US$Inflight.service ==0 | US$Cleanliness==0]
+`%notin%` <- Negate(`%in%`)
+US <- subset(US, X %notin% zeros)
+US$X <- as.vector(seq(1,23863,1))
+```
+```{r}
+US$Gender  <- as.factor(US$Gender)
+US$Customer.Type <- as.factor(US$Customer.Type)
+US$Type.of.Travel <- as.factor(US$Type.of.Travel)
+US$Class <- as.factor(US$Class)
+US$satisfaction<- as.factor(US$satisfaction)
+head(US)
+```
+```{r include=FALSE}
+US$X <- as.integer(US$X)
+US$Arrival.Delay.in.Minutes <- as.integer(US$Arrival.Delay.in.Minutes)
+```
+
+## Introducing Data:  
+>
+>The dataset of this project was retrieved from **Kaggle.com** through the following link where I chose to work with the "test" dataset for size convenience:  
+
+https://www.kaggle.com/teejmahal20/airline-passenger-satisfaction?select=test.csv
+>
+>It contains the results of a Flight Passenger Satisfaction Survey of the year 2015 and it has been collected by US airline. It provides information about the passenger's flight satisfaction with the US airline. This dataframe is structured with 25 columns where 'X' is the observation's index while the rest 24 represent the attributes that will help assess the satisfaction level of the individuals, and 23863 rows representing the observations from passengers of the US airline.
+
+```{r}
+str(US)
+```
+
+# Section 2: Problem  
+>From the US airline's perspective, we need to study the passengers' reactions and measurable opinions regarding every sevice that the airline offers for its customers. First, it is important for the airline to make the right decisions that will improve the flights experiences for these passengers. Moreover, the airline needs to reduce the dimensionality of its data to summarize those 24 attributes into a limited number of key features, more understandable and efficient to analyze. More importantly, the company needs to understand its custmomers characteristics to fulfill the specific requirements of each homogenous group in the dataset.
+
+# Section 3: Technical Information  
+```{r, results='hide'}
+library(naniar)
+```
+This package helps in structuring and detecting the missing values in data and find the proportion of missing data per each attribute. We need it to select and omit those values because they could affect our analysis badly and tamper with the results.
+
+```{r message=FALSE, results='hide'}
+library(dplyr)
+```
+This package contains functions that help manipulate data frames. In our case, we will need it mainly for  grouping data by a particular variable or to summarize a portion of the data or select specific rows or columns we need under certain conditions that we make.
+
+```{r, results='hide'}
+library(ggplot2)
+```
+This package's functions are useful to visualize various types of data in different kind of plots: barplots, piecharts, histograms, etc. We need it in both the Univariate Analysis, as well as the Bivariate analysis to visualize data and the relations between the variables in it.
+
+```{r, results='hide'}
+library (moments)
+```
+This package contains functions that measure statistical moments. It is helpful in our analysis when computing the skewness measure for particular features from our data to assess its symmetry.
+
+```{r, results='hide'}
+library(ggcorrplot)
+```
+This package has functions that generate and visualize a correlation matrix. We require this package in the Bivariate Analysis section to study the correlations between our variables and understand the influence that a change in one feature can make on another and eventually on the overall satisfaction of the passengers.
+
+```{r, results='hide'}
+library(FactoMineR)
+```
+This package contain functions which are crucial for the Principal Components Analysis section. We need it in our data analysis, both to visualize the factor maps and to study our data's dimensionality and passengers' satisfaction level orientation.
+
+```{r message=FALSE, results='hide'}
+library(factoextra)
+```
+This package includes functions which are necessary to perform different clustering techniques on our dataset and to visualize the classification made. We will use it to apply K-means clustering and Hierarchical clustering particularly on our Rensis Likert part of our dataset to identify different groups of the airline's passengers.
+
+# Section 4: Data Analysis  
+
+
+## I. Data Preparation  
+
+* Dealing with missing values:  
+
+First, we need to visualize our missing values because we are dealing with a moderately large dataset.
+```{r}
+gg_miss_var(US)
+```
+
+We can see that the only statistical variable missing values is "Arrival.Delay.in.Minutes" and the number of these values is negligible with respect to the dataframe's dimensions:
+```{r , echo=FALSE}
+dim(US)
+```
+But, we still need to drop these few observations because their missing values can influence the outcome of this data's analysis
+```{r}
+sum(is.na(US))
+US=na.omit(US)
+sum(is.na(US))
+```
+
+* Dealing with outliers:  
+
+First, we use descriptive statistics to briefly describe each variable and detect the ones that clearly contain outliers in their values because we have an important number of features
+```{r}
+summary(US)
+```
+For the features: **"Flight.Distance", "Arrival.Delay.in.Minutes" and "Departure.Delay.in.Minutes"** there are noticeable differences between their respective 3rd quantiles and respective maximum values. In order to verify the existence of outliers, we need to visualize them first.  
+
+```{r, out.width="70%"}
+boxplot(US$Flight.Distance, main='Flight Distance')
+boxplot(US$Arrival.Delay.in.Minutes, main='Arrival Delay in Minutes')
+boxplot(US$Departure.Delay.in.Minutes, main = 'Departure Delay in Minutes')
+```
+  
+Each of these variables have multiple **outliers** with values excluded from the boxplot. We need to find these outliers' indexes because they are inadequate for our data analysis. In order to do that, first we need to compute the 3 extreme values correspondent to these 3 boxplots.  
+```{r}
+Ext_FD= summary(US$Flight.Distance)[5]+1.5*(summary(US$Flight.Distance)[5]-summary(US$Flight.Distance)[2])
+Ext_ADmins= summary(US$Arrival.Delay.in.Minutes)[5]+1.5*(summary(US$Arrival.Delay.in.Minutes)[5]-summary(US$Arrival.Delay.in.Minutes)[2])
+Ext_DDmins= summary(US$Departure.Delay.in.Minutes)[5]+1.5*(summary(US$Departure.Delay.in.Minutes)[5]-summary(US$Departure.Delay.in.Minutes)[2])
+```
+We can conclude that the anomalous values of the 3 variables regarding the Flight Distance, the Arrival and Departure delays in minutes are the ones larger than these extreme values, respectively.
+
+```{r}
+Outliers_FD <- US$X[US$Flight.Distance > Ext_FD]
+Outliers_ADmins <- US$X[US$Arrival.Delay.in.Minutes > Ext_ADmins]
+Outliers_DDmins <- US$X[US$Departure.Delay.in.Minutes > Ext_DDmins]
+```
+
+We have to remove this important number of anomalous values from our dataset:
+```{r}
+US <- subset(US, X %notin% c(Outliers_FD,Outliers_ADmins,Outliers_DDmins))
+dim(US)
+```
+Now, we will be analyzing this data with **19605 observations**.
+
+* Verifying imbalance:  
+
+We need to check if the outcomes of this satisfaction survey are balanced or not. First, we do that by visualizing the results in a barplot:
+```{r , echo=FALSE, out.width="50%"}
+barplot(prop.table(table(US$satisfaction)),beside=T,col=c('darkred','darkgreen'))
+```
+
+```{r include = FALSE}
+library(viridis)
+library(lessR)
+```
+
+```{r}
+PieChart(satisfaction, hole = 0, values = "%", data = US,
+         fill = viridis(3), main = "Satisfaction Level Distribution Piechart")
+```
+
+```
+```{r}
+prop.table(table(US$satisfaction))*100
+```
+There are **56.02%** of the passengers who are neutral or dissatisfied while the satisfied individuals represent **43.98%** of the total observations.  
+**We can conclude that the flight passengers' satisfaction outcomes of this survey are more or less balanced which means that our data does not require further sampling or modifications.**  
+
+* Testing Normality & Skewness:  
+
+We will begin by visualizing the distributions of the cardinal quantitative variables:  
+Flight Distance:  
+```{r}
+#H0: data is normally distributed  
+#H1: data is not normally distributed  
+```
+We can't run a Shapiro-Wilk normality test on this variable unless the number of rows is less or equal to **5000**. So, we will mix the data by drawing a sample of **5000** observations from a total of **19605** from **'Flight.Distance'**.Then, we can run the test:
+```{r}
+set.seed(50)
+FD_sample= sample(US$Flight.Distance,5000,replace=FALSE)
+shapiro.test(FD_sample)
+```
+=> The **Shapiro Wlik normality test** of the **'Flight.Distance'** attribute shows a p-value < 2.2e-16 which is much smaller than 0.01. Hence, we reject H0 at a significance level of alpha=0.01.
+We are 99% confident that this data **does not** fit a normal distribution. So, we attempt to measure its skewness.
+
+```{r,  echo=FALSE}
+ggplot(US, aes(x=Flight.Distance,color=satisfaction,fill=satisfaction),main='Flight Distance Density Plot') + 
+    geom_histogram(aes(y=..density..), colour="black", fill="white")+
+    geom_density(alpha=.2)
+```
+```{r}
+skewness(US$Flight.Distance)
+```
+The density plot clearly confirms the rejection of the null hypothesis, regardless of the passengers' level of satisfaction. Moreover, the skewness measure of this variable is slightly over **1** which reveals that the data is **positively** skewed.
+
+```{r, echo=FALSE, figures-side, fig.show="hold", out.width="50%"}
+ggplot(US, aes(x=Arrival.Delay.in.Minutes,color=Type.of.Travel,fill=Type.of.Travel),
+               main='Arrival Delay Density Plot')+
+    geom_histogram(aes(y=..density..), colour="black", fill="white")+
+    geom_density(alpha=.2)
+ggplot(US, aes(x=Departure.Delay.in.Minutes,color=Class,fill=Type.of.Travel),
+               main='Departure Delay Density Plot') + 
+    geom_histogram(aes(y=..density..), colour="black", fill="white")+
+    geom_density(alpha=.2)
+```
+```{r}
+skewness(US$Arrival.Delay.in.Minutes)
+skewness(US$Departure.Delay.in.Minutes)
+```
+
+=> After observing these density plots, we can conclude that **'Arrival.Delay.in.Minutes' and 'Departure.Delay.in.Minutes'** are **not normally distributed.** After computing the skewness measure, we can affirm that these two variables are highly right-skewed regardless of the passengers' type of travel or their flight class. This means that their probabilities distributions are extremely asymmetric across the passengers.  
+=>This can be explained by the unlikelihood of having numerous flight delays in an airline with so many years of experience.  
+However, the age variable's distribution is not at all skewed, as it appears below.  
+```{r ,echo=F}
+hist(US$Age,col='darkblue',density=10,prob=T,xlab="Passenger's Age",main="Passengers' Age Distribution")
+```
+
+In order to verify, we need to compare the **'Age'** variable's median and mean.
+```{r}
+Median_mean_difference <- summary(US$Age)[3] - summary(US$Age)[4]
+```
+```{r, echo = FALSE}
+paste('the Median-Mean difference is', round(Median_mean_difference,3), 'for the Age feature')
+```
+The difference is less than 1. The mean and median are very close to each other despite the large number of passengers. So, the **'Age' is normally distributed.**  
+
+>Remark: Our dataset is not small enough to perform a shapiro normality test on the remaining attributes. Besides, the rest of the variables which are ordinal & quantitative are in fact discrete 5-point Rensis Likert scale features with values ranging from 1 to 5. Therefore, they are obviously not normally distributed.  
+
+
+## II. Univariate Exploratory Analysis  
+     
+We will explore a few variables, especially categorical ones to understand the passengers of this airline better.  
+
+>* Gender 
+
+```{r,out.width="50%"}
+plot(US$Gender,col=c('black','yellow'),main='Gender Barplot')
+```
+  
+>The data we have about Passenger satisfaction is gender balanced since both genders' frequencies are more or less equal.  
+
+>* Customer Type 
+
+```{r}
+prop.table(table(US$Customer.Type))*100
+```
+>It is to our knowledge that 83.87% of our customers are loyal while the rest are disloyal which proves that this airline faces remarkable issues because having only 43.02% satisfied passengers proves that an important proportion of its loyal customers are either neutral or disappointed with the services offered. This illustrates that the company must work on improving the satisfaction scales on certain features in order to avoid losing these recurring loyal customers. Later, we will see which ones the airline should be focusing on to satisfy this type of customers and earn their trust.  
+
+>* Travel Type  
+
+```{r echo=FALSE, out.width="50%"}
+barplot(prop.table(table(US$Type.of.Travel)),beside=T,col=c('brown','grey'),
+               main='Type of Travel Frequency Barplot')
+prop.table(table(US$Type.of.Travel))*100
+```
+>The majority of this airline's passengers are customers going on Business trips which could possibly reflect their more serious satisfaction assessment while filling the survey compared to the 31.30% of the passengers who are traveling for pleasure and personal purposes only. We will look into that in the Bivariate Analysis step.  
+
+>* Passenger Class  
+
+```{r}
+US %>%
+    group_by(Class) %>%
+    summarize(frequency = n()) %>%
+    arrange(desc(frequency)) %>%
+    mutate(relative_frequency = frequency/sum(frequency),
+           cumulative_frequency = cumsum(relative_frequency))
+```
+>Reviewing this frequencies table, we conclude that the most common flying classes that the passengers in our data opt for are Business Class or Economic Class. The passengers who fly with an Eco Plus Class only represent about 7.48% of the entire dataset's observations. Therefore, they don't impact the overall satisfaction of the airline's customers as much as Business and Eco passengers do.So, we could conclude that the satisfaction of these passengers who represent 92.5% of the airline's customers is its priority.  
+
+>* Flight Distance  
+
+```{r}
+hist(US$Flight.Distance,col=4,
+     main='Histogram: Flight Distance Frequency Distribution')
+```
+  
+>The frequency distribution of the numerical variable 'Flight.Distance' clearly shows that most of the airline's flights distances range from 200 to 400 miles which makes sense because most American Airline travels are probably flights between different states of America.  
+
+## III. Bivariate Exploratory Analysis  
+
+>Correlation Matrix
+
+Since most of our data not normally distributed, we should use a **non-parametric correlation test** when generating correlation matrix : **The Spearman coefficient**  
+```{r warning=FALSE, out.width="120%"}
+US %>% select(.,is.integer & !starts_with(c('X','id'))) %>%
+    cor(.,method='spearman') %>%
+    ggcorrplot(type = "lower", digits=1, title='US airline Data Spearman Correlations',lab=T)
+```
+  
+**This lower-triangle correlation matrix of our numerical data shows that the strongest correlation only exists among the Rensis Likert scale variables, except for a decent correlation between Arrival and Departure delays in Mins of a good coefficient =** *0.5*  
+
+>Continuous Variables
+
+To analyze the relations between the different non ordinal quantitative variables, we will run the **Pearson Correlation test** between them respectively:
+
+```{r}
+cor(US$Flight.Distance,US$Arrival.Delay.in.Minutes)
+cor(US$Flight.Distance,US$Departure.Delay.in.Minutes)
+```
+The Pearson correlation coefficients are very close to 0.  
+**=> There is no correlation between Flight Distance and the two variables "Arrival.Delay.in.Minutes" and "Departure.Delay.in.Minutes" respectively.**
+```{r}
+#H0: No relation  
+#H1: Existence of Relation  
+cor.test(US$Arrival.Delay.in.Minutes,US$Departure.Delay.in.Minutes,conf.int=T,conf.level = 0.99)
+```
+The p-value is much less than 0.01. So, We reject the null hypothesis H0 and we conclude that we are 99% confident they are positively and quite strongly correlated because the correlation coefficient is the following:
+```{r}
+cor(US$Arrival.Delay.in.Minutes,US$Departure.Delay.in.Minutes)
+```
+  
+**=>This can be explained especially by interconnected flights with at least one stop because one Arrival delay can lead to a Departure delay of another completely different flight from the same airport.**  
+>This relation poses the question of comparison of their respective means. Since the data of these two variables is not normally distributed, we shall use the Wilcox Rank Sum Test instead of the Student statistical test.  
+
+* Comparing Averages (*Wilcox Rank Sum Test*)  
+
+```{r}
+#H0: equal means  
+#H1: different means
+wilcox.test(US$Arrival.Delay.in.Minutes,US$Departure.Delay.in.Minutes,paired=F,
+            conf.level=0.99)
+```
+The p-value = 0.986 >> 0.01. So, at a 1% significance level, we accept H0.  
+**=> We are 99% confident that Arrival and Departure Delays features have similar means.**
+
+* Analysis of Variances (*ANOVA TEST*)  
+
+```{r}
+#H0: equal variances: Var(Arr) == Var(Dep)  
+#H1: different variances: Var(Arr) != Var(Dep)
+var.test(US$Arrival.Delay.in.Minutes,US$Departure.Delay.in.Minutes,paired=F,
+         conf.level=0.99)
+```
+=> The p-value = 0.0255 > 0.01. So, we accept H0 at a 1% significance level and we conclude that we are 99% confident these two variables have equal variances. Also, We can see that the upper and lower bounds of the confidence interval are both extremely close to 1.**Therefore, both variables have similar variances and dispersion of their respective values.**  
+
+>Continuous / Categorical
+
+```{r}
+qplot(Age,data=US,color=Class,main="Customers' Age Distribution per Type of Customer") + facet_grid(Customer.Type ~ .)
+```
+  
+We can see that the most loyal customers are passengers in their **mid-40s & mid-50s** while the most disloyal customers are in their **mid-20s.** This can be explained with the familiarity of traveling with the airline in the past and the trust that was built in time between the passengers and the American Airline.  
+
+```{r}
+US %>% ggplot(aes(Type.of.Travel,Flight.Distance)) +
+    geom_boxplot() +
+    labs(title = "Distribution of Flight Distances relative to Type of Travel") +
+    theme_minimal()
+```
+  
+By visualizing these box plots, we can detect a large difference between the data distribution of "Flight.Distance" for the 2 types of Travel. About **75%** of the passengers traveling for Business book flights of less than **2000 miles** while the same percentage of those on personal trips choose to take flights of less than **1000 miles only.**  
+>This illustrates that the majority of the passengers' don't like to bother taking long flights to far destinations when their travel purpose is merely pleasure and personal affairs. Most of the time, it's Business travel passengers who are willing to take extremely long flights because it's work related and they may not have a choice.  
+
+```{r}
+qplot(Flight.Distance,Age,data=US,color=satisfaction,
+               main='Age & Flight Distance Plot per Class') + facet_grid(Class~.)
+```
+  
+The scatter plot is horizontal for all different flight classes possible which means it's a linear relationship with a zero slope. **Hence, there is no correlation between the two variables Age and Flight Distance.**  
+The only relation we can suspect through this plot is the one between the flight class and the passengers' satisfaction levels. We will tackle that in the next part.  
+
+>Categorical
+
+In this case, to perform the **bivariate analysis** required, we need to structure different contingency tables based on two categorical variables and perform a Chi-square test each time. Two tests were conducted as follows: 
+>
+>* 1st Contingency table: Class / satisfaction
+
+```{r}
+Class_satisf <- table(US$satisfaction,US$Class)
+Class_satisf
+#H0: Absence of relationship  
+#H1: Relationship existence 
+chisq.test(Class_satisf)
+```
+After performing the Chi square test, we see that the p-value < 2.2e-16 << 0.01
+So, we reject the null hypothesis. There is a relationship between the two categorical variables and we need to compute Cramer's V in order to measure this relation.
+```{r}
+n=sum(Class_satisf)
+l=length(rownames(Class_satisf))
+c=length(rownames(Class_satisf))
+chi2=summary(Class_satisf)$statistic
+V = sqrt(chi2/(n*min(l-1,c-1)))
+V
+```
+The test outputs V=0.51 => **The relationship between Class and Satisfaction is medium** where the Business Class passengers are mostly satisfied while the majority of Eco and Eco Plus passengers are neutral/dissatisfied with the airline, overall.  
+
+>* 2nd Contingency table: Satisfaction / Customer type
+
+```{r}
+loyalty <- table(US$Customer.Type,US$satisfaction)
+loyalty
+#H0: Absence of relationship  
+#H1: Relationship existence
+chisq.test(loyalty)
+```
+p-value < 2.2e-16 => We reject H0. 
+```{r}
+n2=sum(loyalty)
+l2=length(rownames(loyalty))
+c2=length(rownames(loyalty))
+chi2_loyalty=summary(loyalty)$statistic
+V2 = sqrt(chi2_loyalty/(n*min(l-1,c-1)))
+V2
+```
+There exist a relationship but it is a **very weak** one between the type of customer's and their satisfaction because V=0.21 
+ 
+
+> => Remark: In this section, we did not analyze the 5-point Rensis Likert scale variables because we won't be considering them as continuous variables. We will tackle them in the next section, separately.  
+  
+## IV. Principal Components Analysis  
+
+  
+**We will run a PCA Analysis to reduce dimensionality in our data and to group passengers of the airline into homogeneous clusters in order to study correlation between the Rensis Likert variables of our data better.**  
+That is why we have to separate those variables from the our data frame.  
+
+```{r}
+Likertscale <- US[,c('Inflight.wifi.service','Departure.Arrival.time.convenient',
+                     'Ease.of.Online.booking','Gate.location','Food.and.drink',
+                     'Online.boarding','Seat.comfort','Inflight.entertainment',
+                     'On.board.service','Leg.room.service','Baggage.handling',
+                     'Checkin.service','Inflight.service','Cleanliness')]
+head(Likertscale)
+```
+  
+**In order to clearly visualize the individuals' opinions on the survey without ommiting valuable observations to our data's dimensions, we should select a sample of 1000 individuals from our data because they are 19605 passengers.**
+Then, we run the PCA function:  
+```{r warning=FALSE}
+res=PCA(Likertscale[c(1:1000),])
+res
+```
+
+> Choice of number of axis to retain:  
+
+**We will take into consideration both the inertia criterion and the Kaiser criterion with a 70% threshold to make our final choice.**
+```{r}
+round(res$eig,2)
+```
+The first 5 components represent about **74.77%** of the total information. But, only first 4 axis have eigenvalues that are larger than 1.  
+=>We will retain the first **3 axis only** because the ratio of explained variance drops from **15.67 to 7.23** . (huge drop in information)
+
+> Variables Projection Quality Evaluation:  
+
+```{r}
+round(res$var$cos2,2)
+```
+  
+**After observing the cosine square for the 2 first dimensions, if we take 0.6 as our threshold to be selective when comparing sum of cosine squares, we see that the 3 features: Inflight Wifi Service, Inflight entertainment, Ease of Online booking with respective values 0.68, 0.79, 0.77 all have great projection quality on the Principal factor map while the worst projected variables are Checkin service and Leg room service which makes sense because they are the closest ones to the origin of the PCA graph above.**  
+
+> Individuals Projection Quality Evaluation:  
+
+```{r}
+frame <- as.data.frame(round(res$ind$cos2,2))
+frame$Sumcos <- frame$Dim.1+frame$Dim.2
+```
+
+**Best projected individuals on the principal factor map (threshold = 0.6):**
+```{r}
+Good<-frame[frame$Sumcos>0.6,]
+paste("There are", nrow(Good),"very well projected individuals")
+```
+
+However, the worst projected individuals are those who are close to the origin of the graph, meaning, they have sum of cos square close to 0.  
+**Worst projected individuals on the principal factor map (threshold = 0.6):**
+```{r}
+Bad<-frame[frame$Sumcos<0.1,]
+paste("There are", nrow(Bad),"very badly projected individuals")
+```
+They are not many but they are NOT reliable in the principal components analysis.  
+
+> Contributions Analysis:  
+
+```{r}
+round(res$var$contrib,2)
+```
+* Principal Components axis identification: 
+
+After observing the contributions of each variable for each dimension, we can understand that the features that contribute the most in explaining the first dimension are: The inflight entertainment, seat comfort and cleanliness. So, we could label the **Dim1** as **"Degree of comfort"**.  
+As for the 2nd dimension, it is mostly explained by Ease of Online booking, Gate location and Departure & Arrival time convenience. So, the **2nd principal axis** can be labeled as **"Degree of Simplicity & Convenience".**  
+As for the **3rd dimension**, it is mostly explained by the Inflight service and the Baggage handling and also Food & Drink which could both represent this axis as **"Basic service"** which is the minimum that any airline should provide for its customers on any flight.  
+
+* Individuals groups identification: 
+
+First, we will take a **smaller sample** than the previous to distinguish individuals from each other and identify each group:
+```{r include=FALSE}
+res_100=PCA(Likertscale[c(1:100),])
+```
+
+```{r}
+fviz_pca_ind(res_100)
+```
+    
+>
+**We can come to the conclusion that individuals 65,105,13,20,113 and 110 are the most satisfied with the simplicity and convenience of their flights with the airline but their opinions are neutral towards the Comfort features.
+On the other hand, the individuals 120,29,104,55,78,19,47,131,77,97 and 88 represent the most satisfied passengers with the degree of comfort in their flights.
+The individuals who are neutral or dissatisfied with both types of features are mainly individuals 79,124,112,128,75 and 101 who are located in the opposite direction of both axes.
+Obviously, the individuals 50,58,89,48,30 and 98 are hard to interpret because they are badly projected because they're close to the origin of the individuals factor map.**  
+
+Since the passengers are numerous, it is hard to classify the individuals on the PCA graph into different groups. That is why we will opt for some clustering techniques in the next and final section of our Data Analysis.  
+  
+  
+## V. Clustering  
+  
+**We will use the data with Rensis Likert scale variables only so we won't have to standardize or scale our data before applying these next few clustering techniques.**  
+```{r}
+head(Likertscale)
+```
+>
+* **HIERARCHICAL Technique**   
+
+```{r}
+hir_sample <- Likertscale[c(1:1000),]
+```
+
+We can't select more than **1000** individuals because we need the cluster dendrogram to be clear and vast enough for us to detect the highest jump between clusters.
+
+**Remark: We won't use the Euclidian method to compute distances because we won't be considering our Rensis Likert scale data as continuous. Therefore, we will opt for
+the manhattan method which does the sum of all the real distances between a cluster source and a cluster destination:**  
+
+```{r}
+D=dist(hir_sample,method = "manhattan")
+```
+
+> 1. Clustering with **complete method**  
+
+```{r}
+comp=hclust(d=D,method="complete")
+plot(comp)
+rect.hclust(comp, k = 2, border = 2:5)
+```
+  
+After observing the highest jump in the Hierarchical Cluster Dendrogram, we cut the tree in the last level into **2 clusters**.  
+```{r, include=FALSE}
+cutree(comp,2)
+```
+  
+Another method we can consider when clustering with hierarchical techniques is Ward:   
+> 2. Clustering with **Ward's minimum variance method**  
+
+```{r}
+ward=hclust(d=D,method="ward.D")
+plot(ward)
+rect.hclust(ward, k = 2, border = 2:5)
+```
+  
+The highest jump in the Hierarchical Cluster Dendrogram is in the last level. So, we cut the clusters tree into **2 clusters**.  
+```{r include=FALSE}
+cutree(ward,2)
+```
+  
+> 3. Clustering with **Average method**  
+
+```{r}
+avg=hclust(d=D,method="average")
+plot(avg)
+rect.hclust(avg, k = 2, border = 2:5)
+```
+  
+Identically to the previous method, we cut the clusters tree into **2 clusters**  as follows:  
+```{r include = FALSE}
+cutree(avg,2)
+```
+>
+
+>Accordingly, the hierarchical technique suggest that there should be **2 clusters** of the individuals in our data. So, the optimal number of clusters in this **Hierarchical** technique is 2.
+
+Then, let's try to identify them using the **average** method.  
+First, we will visualize the PCA variables factor map for the sample of Hierarchical technique:   
+
+```{r include=FALSE}
+res_1000=PCA(hir_sample)
+```
+
+```{r}
+fviz_pca_var(res_1000,subtitle="Sample of 1000 individuals")
+```
+  
+Second, we will select two individuals from the two different groups detected and we will use their respective data to identify their respective clusters:  
+```{r}
+cutree(avg,2)[c("2","17")]
+hir_sample[cutree(avg,2)["2"][1],]
+```
+The individual number **2** from cluster **1** has **high** opinion scales in the features that belong to the second dimension **"Degree of Comfort"** such as Inflight Entertainment, seat comfort, Leg room service and Inflight service, which reflects a **good** level of satisfaction while most of the rest are less than or equal to 3.  
+
+```{r}
+hir_sample[cutree(avg,2)["17"][1],]
+```
+As for individual **17** from cluster **2**, they have **low** opinion scales for the same features of **Degree of Comfort**. So they have a **bad** level of satisfaction towards comfort in their flights.  
+=> Cluster 1: People satisfied with comfort features in flights with that airline.  
+=> Cluster 2: People dissatisfied with comfort features in flights with that airline
+
+Now, we will explore the classification of the individuals in our data from a different perspective, using a new clustering technique:  
+
+>
+* **K-MEANS Technique**  
+  
+   **- Elbow Method:**  
+```{r}
+datasample <- Likertscale[c(1:1000),]
+fviz_nbclust(datasample, kmeans, method = "wss") +
+    geom_vline(xintercept = 4, linetype = 2)+
+    labs(subtitle = "Elbow method")
+```
+   
+   **- Silhouette method:**  
+```{r}
+fviz_nbclust(datasample, kmeans, method = "silhouette")+
+    labs(subtitle = "Silhouette method")
+```
+  
+It is clear that the Elbow method implies that the optimal number of clusters is **4** while the Silhouette method clearly shows a peak at optimal number of clusters k = **2**
+So, we will opt for a number of clusters = 3.  
+**We can now implement k means clustering technique with k=3:**
+
+```{r}
+three=kmeans(datasample,centers = 3,nstart=25)
+three$centers
+```
+=> After observing the means of the scales of each variable, we can conclude that we can indeed cluster the individuals in our data into 3 groups: 
+
+* Passengers who are satisfied with the **comfort features** where their means are **strictly larger than 3** (such as Seat.comfort, Inflight.entertainment,Leg.room.service Cleanliness and Inflight.service).  
+* Passengers who are **overall neutral or dissatisfied** with their flights where the cluster means of all features **range in [2.07;3.27]**  
+* Passengers who are satisfied with the **simplicity and convenience features** where their means are **strictly larger than 3** (such as Inflight.wifi.service, Ease.of.Online.booking, Departure,Arrival.time.convenient, and Gate.location).  
+We can visualize these 3 clusters with the function below:  
+
+```{r}
+fviz_cluster(three, data = datasample)
+```
+
+  
+> Cluster 1: Satisfied with *simplicity and convenience* // Cluster 2: Neutral *or* Dissatisfied // Cluster 3: Satisfied with *comfort degree*.  
+
+=> In this section, both techniques help identify homogeneous groups of the airline's passenger. However, the clusters generated from the K-means technique make more sense and match our dataset better. The airline can now use these clusters to adapt to its customers preferences respectively and satisfy each category of passengers differently.
+
+## Conclusion  
+
+>  
+* The airline's satisfaction survey sheds a light on the imbalanced structure of its passengers in terms of Flight Class and Loyalty. This caused a problem because around half of the loyal customers are either neutral or dissatisfied. That is why, the company should focus on improving the quality of the services that this portion of the customers are not satisfied with. They are much more important than the disloyal ones, obviously because their flights' bookings are recurring, so their opinion matters the most. Moreover, the two major flight classes that require full attention are Business Class and Eco because over 90% of their passengers opt for them and also because they have a strong relation with their overall satisfaction level in this survey. The reason behind that could be that the majority of flights have Business purposes not personal one, therefore, the customers can be more critical in their airline service assessment and a bit harder to satisfy.  
+* In addition, The airline can easily group its multiple attributes into 2 or 3 main ones, respectively: *Comfort*, *Simplicity & Convenience* and *Basic Service* because they explain a respectable amount of the total information of the data collected. These 3 key features helps the company look at the big picture and tackle many offered services with one change, one adaptation or one solution for each feature. The PCA Analysis of the 5-point Rensis Likert Scale variables proved the above and clarified the orientation of each group of individuals as well as their level of contentment with particular listed services.  
+* Last but not least, after comparing two different clustering techniques in our analysis, we conclude that the best way that the airline can cluster its passengers is by classifying them into 3 homogeneous groups of individuals: Ones who are satisfied with comfort features, ones who are satisfied with simplicity & convenience features and finally ones who are either neutral or dissatisfied with both types.
+
+>
+>
+> Sarra Hannachi.
