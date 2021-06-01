@@ -1,4 +1,4 @@
-This project was conducted individually to perform **data analysis** on a dataset that provides information regarding the _US Flight Passengers' Satisfaction in the year 2015. The dataset of this project was retrieved from **Kaggle.com** through the following link where I chose to work with the "**test**" dataset for size convenience: 
+This project was conducted individually to perform **data analysis** on a dataset that provides information regarding the _US Flight Passengers' Satisfaction in the year 2015_. The dataset of this project was retrieved from **Kaggle.com** through the following link where I chose to work with the "**test**" dataset for size convenience: 
 https://www.kaggle.com/teejmahal20/airline-passenger-satisfaction?select=test.csv
 
 ---
