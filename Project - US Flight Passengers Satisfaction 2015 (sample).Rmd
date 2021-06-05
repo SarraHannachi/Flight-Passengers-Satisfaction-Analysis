@@ -176,7 +176,6 @@ PieChart(satisfaction, hole = 0, values = "%", data = US,
          fill = viridis(3), main = "Satisfaction Level Distribution Piechart")
 ```
 
-```
 ```{r}
 prop.table(table(US$satisfaction))*100
 ```
